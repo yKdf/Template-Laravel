@@ -4,7 +4,7 @@ Base genérica para criar sites com uma organização inspirada no Pterodactyl, 
 
 ## Tecnologias
 
-- Laravel 11 e PHP 8.2+
+- Laravel 13 e PHP 8.5
 - React 18 e TypeScript
 - Webpack 5
 - SQLite por padrão; MySQL e Redis disponíveis pelo Docker Compose
