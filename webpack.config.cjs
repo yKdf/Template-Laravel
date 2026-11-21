@@ -1,157 +1,86 @@
 const path = require('path');
-const webpack = require('webpack');
 const AssetsManifestPlugin = require('webpack-assets-manifest');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const TerserPlugin = require('terser-webpack-plugin');
-const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
+const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
 
-const isProduction = process.env.NODE_ENV === 'production';
+module.exports = (_env, argv) => {
+    const isProduction = argv.mode === 'production';
 
-module.exports = {
-    cache: true,
+    return {
+    mode: isProduction ? 'production' : 'development',
     target: 'web',
-    mode: process.env.NODE_ENV,
-    devtool: isProduction ? false : (process.env.DEVTOOL || 'eval-source-map'),
-    performance: {
-        hints: false,
+    entry: {
+        app: path.resolve(__dirname, 'resources/scripts/main.tsx'),
     },
-    entry: ['react-hot-loader/patch', './resources/scripts/index.tsx'],
     output: {
-        path: path.join(__dirname, '/public/assets'),
-        hashFunction: 'sha256',
-        filename: isProduction ? 'bundle.[chunkhash:8].js' : 'bundle.[hash:8].js',
-        chunkFilename: isProduction ? '[name].[chunkhash:8].js' : '[name].[hash:8].js',
-        publicPath: (process.env.WEBPACK_PUBLIC_PATH || '/assets/'),
-        crossOriginLoading: 'anonymous',
+        path: path.resolve(__dirname, 'public/assets'),
+        filename: isProduction ? '[name].[contenthash:8].js' : '[name].js',
+        chunkFilename: isProduction ? '[name].[contenthash:8].js' : '[name].js',
+        publicPath: '/assets/',
+        clean: true,
     },
+    devtool: isProduction ? false : 'eval-source-map',
     module: {
         rules: [
             {
                 test: /\.tsx?$/,
-                exclude: /node_modules|\.spec\.tsx?$/,
-                loader: 'babel-loader',
-            },
-            {
-                test: /\.mjs$/,
-                include: /node_modules/,
-                type: 'javascript/auto',
-            },
-            {
-                test: /\.css$/,
-                use: [
-                    { loader: 'style-loader' },
-                    {
-                        loader: 'css-loader',
-                        options: {
-                            modules: {
-                                auto: true,
-                                localIdentName: isProduction ? '[name]_[sha256:hash:base64:8]' : '[path][name]__[local]',
-                                localIdentContext: path.join(__dirname, 'resources/scripts/components'),
-                            },
-                            sourceMap: !isProduction,
-                            importLoaders: 1,
-                        },
-                    },
-                    {
-                        loader: 'postcss-loader',
-                        options: { sourceMap: !isProduction },
-                    },
-                ],
-            },
-            {
-                test: /\.(png|jp(e?)g|gif)$/,
-                loader: 'file-loader',
-                options: {
-                    name: 'images/[name].[sha256:hash:hex:8].[ext]',
+                exclude: /node_modules/,
+                use: {
+                    loader: 'ts-loader',
+                    options: { transpileOnly: true },
                 },
             },
             {
-                test: /\.svg$/,
-                loader: 'svg-url-loader',
+                test: /\.css$/,
+                use: [MiniCssExtractPlugin.loader, 'css-loader'],
             },
-            {
-                test: /\.js$/,
-                enforce: 'pre',
-                loader: 'source-map-loader',
-            }
         ],
-    },
-    stats: {
-        // Ignore warnings emitted by "source-map-loader" when trying to parse source maps from
-        // JS plugins we use, namely brace editor.
-        warningsFilter: [/Failed to parse source map/],
     },
     resolve: {
         extensions: ['.ts', '.tsx', '.js', '.json'],
         alias: {
-            '@': path.join(__dirname, '/resources/scripts'),
-            '@definitions': path.join(__dirname, '/resources/scripts/api/definitions'),
-            '@feature': path.join(__dirname, '/resources/scripts/components/server/features'),
+            '@': path.resolve(__dirname, 'resources/scripts'),
         },
-        symlinks: false,
-    },
-    externals: {
-        // Mark moment as an external to exclude it from the Chart.js build since we don't need to use
-        // it for anything.
-        moment: 'moment',
     },
     plugins: [
-        new webpack.EnvironmentPlugin({
-            NODE_ENV: 'development',
-            DEBUG: process.env.NODE_ENV !== 'production',
-            WEBPACK_BUILD_HASH: Date.now().toString(16),
+        new MiniCssExtractPlugin({
+            filename: isProduction ? '[name].[contenthash:8].css' : '[name].css',
         }),
-        new AssetsManifestPlugin({ writeToDisk: true, publicPath: true, integrity: true, integrityHashes: ['sha384'] }),
-        new ForkTsCheckerWebpackPlugin({
-            typescript: {
-                mode: 'write-references',
-                diagnosticOptions: {
-                    semantic: true,
-                    syntactic: true,
-                },
-            },
-            eslint: isProduction ? undefined : {
-                files: `${path.join(__dirname, '/resources/scripts')}/**/*.{ts,tsx}`,
-            }
+        new AssetsManifestPlugin({
+            output: 'manifest.json',
+            publicPath: false,
+            writeToDisk: true,
         }),
-        process.env.ANALYZE_BUNDLE ? new BundleAnalyzerPlugin({
-            analyzerHost: '0.0.0.0',
-            analyzerPort: 8081,
-        }) : null
-    ].filter(p => p),
+        new ForkTsCheckerWebpackPlugin(),
+        process.env.ANALYZE_BUNDLE
+            ? new BundleAnalyzerPlugin({ analyzerHost: '0.0.0.0', analyzerPort: 8081 })
+            : null,
+    ].filter(Boolean),
     optimization: {
-        usedExports: true,
-        sideEffects: false,
-        runtimeChunk: false,
-        removeEmptyChunks: true,
         minimize: isProduction,
         minimizer: [
             new TerserPlugin({
-                cache: isProduction,
                 parallel: true,
                 extractComments: false,
-                terserOptions: {
-                    mangle: true,
-                    output: {
-                        comments: false,
-                    },
-                },
+                terserOptions: { format: { comments: false } },
             }),
         ],
     },
-    watchOptions: {
-        poll: 1000,
-        ignored: /node_modules/,
-    },
     devServer: {
-        compress: true,
-        contentBase: path.join(__dirname, '/public'),
-        publicPath: process.env.WEBPACK_PUBLIC_PATH || '/assets/',
-        allowedHosts: [
-            '.painel.local',
-        ],
-        headers: {
-            'Access-Control-Allow-Origin': '*',
+        host: '0.0.0.0',
+        port: 8080,
+        hot: true,
+        static: {
+            directory: path.resolve(__dirname, 'public'),
         },
+        devMiddleware: {
+            publicPath: '/assets/',
+            writeToDisk: true,
+        },
+        allowedHosts: 'all',
+        headers: { 'Access-Control-Allow-Origin': '*' },
     },
+    };
 };
